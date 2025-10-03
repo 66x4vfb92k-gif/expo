@@ -2,6 +2,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from 'ThemeProvider';
 import * as React from 'react';
+import { getScreenIdForLinking } from 'test-suite/screens/getScreenIdForLinking';
 
 import getStackNavWithConfig from './StackConfig';
 import { optionalRequire } from './routeBuilder';
@@ -243,6 +244,7 @@ const ScreensList: ScreenConfig[] = [
       return optionalRequire(() => require('../screens/UI/UIScreen'));
     },
     name: 'Expo UI',
+    route: 'expo-ui',
   },
   {
     getComponent() {
@@ -313,9 +315,9 @@ export const Screens: ScreenConfig[] = [
   ...MapsScreens,
 ];
 
-export const screenApiItems: ScreenApiItem[] = ScreensList.map(({ name, route }) => ({
-  name,
-  route: '/components/' + (route ?? name.toLowerCase()),
+export const screenApiItems: ScreenApiItem[] = ScreensList.map((config) => ({
+  name: config.name,
+  route: '/components/' + getScreenIdForLinking(config),
   isAvailable: true,
 }));
 

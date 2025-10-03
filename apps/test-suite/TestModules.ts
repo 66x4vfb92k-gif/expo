@@ -1,6 +1,3 @@
-'use strict';
-
-import Constants from 'expo-constants';
 import { Platform } from 'expo-modules-core';
 
 import ExponentTest from './ExponentTest';
@@ -37,12 +34,12 @@ const TaskManagerTestScreen = optionalRequire(() => require('./tests/TaskManager
 // I have a hunch that optionalRequire doesn't work when *not* in global scope
 // since I had to move Camera screen import here too to get rid of an error
 // caused by missing native module.
-const CameraTestScreen = optionalRequire(() => require('./tests/Camera'));
 
+export type Module = { name: string; route?: string; test: Function };
 // List of all modules for tests. Each file path must be statically present for
 // the packager to pick them all up.
 export function getTestModules() {
-  const modules = [
+  const modules: Module[] = [
     // Sanity
     require('./tests/Basic'),
   ];
@@ -66,7 +63,6 @@ export function getTestModules() {
     require('./tests/Blur'),
     require('./tests/LinearGradient'),
     require('./tests/HTML'),
-    require('./tests/FirebaseJSSDKCompat'),
     require('./tests/FirebaseJSSDK'),
     require('./tests/ImageManipulator'),
     require('./tests/Clipboard'),
@@ -90,7 +86,6 @@ export function getTestModules() {
   if (Platform.OS === 'web') {
     modules.push(
       require('./tests/Contacts'),
-      // require('./tests/SVG'),
       require('./tests/Localization'),
       require('./tests/Recording'),
       optionalRequire(() => require('./tests/Notifications')),
@@ -139,9 +134,7 @@ export function getTestModules() {
     modules.push(optionalRequire(() => require('./tests/MediaLibraryNext')));
 
     modules.push(optionalRequire(() => require('./tests/Battery')));
-    if (Constants.isDevice) {
-      modules.push(optionalRequire(() => require('./tests/Brightness')));
-    }
+    modules.push(optionalRequire(() => require('./tests/Brightness')));
     // Crashes app when mounting component
     modules.push(optionalRequire(() => require('./tests/Video')));
     // "sdkUnversionedTestSuite failed: java.lang.NullPointerException: Attempt to invoke interface method
@@ -149,15 +142,8 @@ export function getTestModules() {
     modules.push(TaskManagerTestScreen);
     // Audio tests are flaky in CI due to asynchronous fetching of resources
     modules.push(optionalRequire(() => require('./tests/Audio')));
-
-    // The Camera tests are flaky on iOS, i.e. they fail randomly
-    if (Constants.isDevice) {
-      modules.push(CameraTestScreen);
-    }
   }
-  if (Constants.isDevice) {
-    modules.push(optionalRequire(() => require('./tests/Cellular')));
-  }
+  modules.push(optionalRequire(() => require('./tests/Cellular')));
   return modules
     .filter(Boolean)
     .sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1));

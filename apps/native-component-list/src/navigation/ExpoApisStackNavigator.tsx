@@ -2,6 +2,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from 'ThemeProvider';
 import * as React from 'react';
+import { getScreenIdForLinking } from 'test-suite/screens/getScreenIdForLinking';
 
 import { optionalRequire } from './routeBuilder';
 import { TabBackground } from '../components/TabBackground';
@@ -55,7 +56,8 @@ export const ScreensList: ScreenConfig[] = [
     getComponent() {
       return optionalRequire(() => require('../screens/CellularScreen'));
     },
-    name: 'Cellular',
+    name: 'Cellular (device-only)',
+    route: 'cellular',
   },
   {
     getComponent() {
@@ -144,7 +146,8 @@ export const ScreensList: ScreenConfig[] = [
     getComponent() {
       return optionalRequire(() => require('../screens/BrightnessScreen'));
     },
-    name: 'Brightness',
+    name: 'Brightness (device-only)',
+    route: 'brightness-device-only',
   },
   {
     getComponent() {
@@ -423,6 +426,7 @@ export const ScreensList: ScreenConfig[] = [
       return optionalRequire(() => require('../screens/UpdatesScreen'));
     },
     name: 'Updates Reload Screen',
+    route: 'updates-reload-screen',
   },
   {
     getComponent() {
@@ -435,6 +439,7 @@ export const ScreensList: ScreenConfig[] = [
       return optionalRequire(() => require('../screens/VideoThumbnailsScreen'));
     },
     name: 'Video Thumbnails',
+    route: 'video-thumbnails',
   },
   {
     getComponent() {
@@ -454,9 +459,9 @@ export const Screens: ScreenConfig[] = [
   ...CalendarsScreens,
 ];
 
-export const screenApiItems: ScreenApiItem[] = ScreensList.map(({ name, route }) => ({
-  name,
-  route: '/apis/' + (route ?? name.toLowerCase()),
+export const screenApiItems: ScreenApiItem[] = ScreensList.map((config) => ({
+  name: config.name,
+  route: '/apis/' + getScreenIdForLinking(config),
   isAvailable: true,
 }));
 

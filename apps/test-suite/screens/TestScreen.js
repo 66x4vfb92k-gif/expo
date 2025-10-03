@@ -6,6 +6,7 @@ import { StyleSheet, View } from 'react-native';
 
 import ExponentTest from '../ExponentTest';
 import { getTestModules } from '../TestModules';
+import { getScreenIdForLinking, getSelectedTestNames } from './getScreenIdForLinking';
 import Portal from '../components/Portal';
 import RunnerError from '../components/RunnerError';
 import Suites from '../components/Suites';
@@ -26,14 +27,15 @@ export default class TestScreen extends React.Component {
   state = initialState;
   _results = '';
   _failures = '';
-  _scrollViewRef = null;
 
   componentDidMount() {
     const selectionQuery = this.props.route.params?.tests ?? '';
-    const selectedTestNames = selectionQuery.split(/[,\s]/);
 
+    const selectedTestNames = getSelectedTestNames(selectionQuery);
     // We get test modules here to make sure that React Native will reload this component when tests were changed.
-    const selectedModules = getTestModules().filter((m) => selectedTestNames.includes(m.name));
+    const selectedModules = getTestModules().filter((m) =>
+      selectedTestNames.includes(getScreenIdForLinking(m))
+    );
 
     if (!selectedModules.length) {
       console.warn('[TEST_SUITE]', 'No selected modules', selectedTestNames);
