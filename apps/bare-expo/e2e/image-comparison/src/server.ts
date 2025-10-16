@@ -43,7 +43,7 @@ Bun.serve({
         });
         await fs.promises.mkdir(path.dirname(currentScreenshotArtifactPath), { recursive: true });
 
-        if (testID) {
+        if (testID && viewShotOutputPath) {
           // TODO get scale factor from simctl
           const displayScaleFactor = platform === 'android' ? 1 : 3;
           await cropViewByTestID({

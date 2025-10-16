@@ -1,17 +1,9 @@
 import { z } from 'zod';
 
-const undefinablePercentage = (min?: number, defaultValue?: number) =>
+const undefinablePercentage = (min: number) =>
   z
-    .union([z.number(), z.string(), z.undefined()])
     .transform((val) => (val === 'undefined' ? undefined : val))
-    .pipe(
-      z.coerce
-        .number()
-        .min(min ?? 0)
-        .max(1)
-        .optional()
-        .default(defaultValue)
-    );
+    .pipe(z.coerce.number().min(min).max(1).optional());
 
 const undefinableString = z
   .string()
@@ -24,7 +16,7 @@ const screenshotSchema = z.object({
   diffOutputPath: z.string().nonempty(),
   similarityThreshold: undefinablePercentage(0),
   platform: z.enum(['ios', 'android']),
-  resizingFactor: undefinablePercentage(0.1, 0.5),
+  resizingFactor: undefinablePercentage(0.1),
 });
 
 const viewShotSchema = screenshotSchema.and(
@@ -34,14 +26,15 @@ const viewShotSchema = screenshotSchema.and(
   })
 );
 
-export const schema = z
-  .union([viewShotSchema, screenshotSchema])
-  .transform((data) => {
-    // Apply conditional default for similarityThreshold based on mode
-    if (data.similarityThreshold === undefined) {
-      const isNormalizationMode = 'mode' in data && data.mode === 'normalize';
-      data.similarityThreshold = isNormalizationMode ? 0.15 : 0.05;
-    }
-    return data;
-  });
+export const schema = z.union([viewShotSchema, screenshotSchema]).transform((data) => {
+  // Apply conditional default for similarityThreshold based on mode
+  if (data.similarityThreshold === undefined) {
+    const isNormalizationMode = 'mode' in data && data.mode === 'normalize';
+    data.similarityThreshold = isNormalizationMode ? 0.15 : 0.05;
+  }
+  if (data.resizingFactor === undefined) {
+    data.resizingFactor = 0.5;
+  }
+  return data;
+});
 export type RequestBody = z.infer<typeof schema>;

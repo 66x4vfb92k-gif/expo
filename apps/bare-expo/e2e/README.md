@@ -4,6 +4,7 @@
 
 - Install [Maestro CLI](https://maestro.mobile.dev/docs/getting-started/installation)
 - `brew install oxipng` for image compression
+- run `yarn install` in `bare-expo/e2e/image-comparison`
 - (optional, recommended) Alignment with devices which are used in CI ([iOS](https://github.com/expo/expo/blob/051a306ce7c5b875f7398450e5aeec2e52e313ae/apps/bare-expo/scripts/start-ios-e2e-test.ts#L18), [Android](https://github.com/expo/expo/blob/051a306ce7c5b875f7398450e5aeec2e52e313ae/.github/actions/use-android-emulator/action.yml#L48)). This is necessary for assertions on what is visible on the screen and (especially) for view shots to match.
 - use the following command to generate the Android emulator:
 
