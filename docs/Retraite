@@ -1,0 +1,462 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { View, Text, TextInput, Pressable, FlatList, Alert, ScrollView, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+/**
+ * Retraite Facile — Starter Expo (100% local)
+ * Écrans :
+ *  - Tableau de bord (synthèse rapide)
+ *  - Carrière (saisie périodes, calcul trimestres)
+ *  - PER (simulation fiscale & capital)
+ *  - Profil (année de naissance, TMI par défaut)
+ *
+ * Persistance : AsyncStorage (local, offline)
+ * Aucune API requise — parfait pour prototyper depuis l’iPhone avec Expo Go.
+ */
+
+// ---------- Styles simples et lisibles ----------
+const colors = {
+  bg: "#0B0D10",
+  card: "#14171C",
+  ink: "#FFFFFF",
+  inkMuted: "#9AA4B2",
+  accent: "#59D185",
+  danger: "#FF6B6B",
+  border: "#222832",
+};
+
+const S = {
+  app: { flex: 1, backgroundColor: colors.bg, paddingTop: Platform.OS === "ios" ? 52 : 24 },
+  header: { paddingHorizontal: 16, paddingBottom: 8 },
+  h1: { color: colors.ink, fontSize: 22, fontWeight: "700" },
+  h2: { color: colors.ink, fontSize: 16, fontWeight: "600", marginBottom: 6 },
+  p: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
+  card: { backgroundColor: colors.card, borderRadius: 12, padding: 14, marginVertical: 8, borderWidth: 1, borderColor: colors.border },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  input: {
+    backgroundColor: "#101318",
+    color: colors.ink,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    borderRadius: 10,
+    fontSize: 16,
+  },
+  label: { color: colors.inkMuted, fontSize: 13, marginBottom: 6 },
+  btn: {
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnText: { color: "#04120A", fontWeight: "700", fontSize: 16 },
+  btnGhost: {
+    backgroundColor: "#101318",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  btnDanger: {
+    backgroundColor: colors.danger,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  tabBar: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#0E1116",
+  },
+  tabBtn: { flex: 1, paddingVertical: 12, alignItems: "center" },
+  tabText: { color: colors.inkMuted, fontSize: 12, fontWeight: "600" },
+  tabActive: { color: colors.ink },
+};
+
+// ---------- Helpers finance ----------
+const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+/**
+ * Intérêt composé mensuel
+ * P = versement mensuel, r = taux annuel (ex: 0.05), n = nombre de mois
+ */
+function futureValueSeriesMonthly(P, r, n) {
+  const i = r / 12;
+  if (i === 0) return P * n;
+  return P * ((Math.pow(1 + i, n) - 1) / i);
+}
+
+/**
+ * Conversion capital -> rente annuelle (taux de conversion simple)
+ * On utilise un taux prudent par défaut pour prototyper (3.5%).
+ */
+function capitalToAnnuity(capital, annuityRate = 0.035) {
+  return capital * annuityRate;
+}
+
+/**
+ * Estimation très simplifiée des trimestres : 4 par année civile pleine.
+ * (Prototype : on ne gère pas les cas particuliers CNAV/validations partielles)
+ */
+function estimateQuarters(startYear, endYear) {
+  const years = Math.max(0, endYear - startYear + 1);
+  return clamp(years * 4, 0, 4 * 50); // garde-fou
+}
+
+// ---------- Storage ----------
+const KEYS = {
+  PROFILE: "@rf.profile",
+  CAREER: "@rf.career",
+  PER: "@rf.per",
+};
+
+async function load(key, fallback) {
+  try {
+    const v = await AsyncStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function save(key, value) {
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    Alert.alert("Sauvegarde", "Impossible d'enregistrer localement.");
+  }
+}
+
+// ---------- Écrans ----------
+function Dashboard({ profile, career, per }) {
+  const totalSalary = useMemo(
+    () => career.reduce((sum, p) => sum + (Number(p.avgSalary) || 0) * Math.max(0, (p.endYear - p.startYear + 1)), 0),
+    [career]
+  );
+
+  const totalQuarters = useMemo(
+    () => career.reduce((sum, p) => sum + estimateQuarters(p.startYear, p.endYear), 0),
+    [career]
+  );
+
+  const ages = [64, 65, 66, 67];
+  const perMonthly = (Number(per.annualContribution) || 0) / 12;
+  const currentYear = new Date().getFullYear();
+  const yearsTo = (age) => Math.max(0, age - (profile?.birthYear ? currentYear - profile.birthYear : 40));
+
+  const proj = ages.map((age) => {
+    const months = yearsTo(age) * 12;
+    const cap = futureValueSeriesMonthly(perMonthly, (Number(per.expectedReturn) || 5) / 100, months);
+    return {
+      age,
+      capital: Math.round(cap),
+      annuity: Math.round(capitalToAnnuity(cap)),
+    };
+  });
+
+  return (
+    <ScrollView style={{ paddingHorizontal: 16 }}>
+      <View style={S.header}>
+        <Text style={S.h1}>Retraite Facile</Text>
+        <Text style={S.p}>Vue d’ensemble rapide : carrière, PER et projections.</Text>
+      </View>
+
+      <View style={S.card}>
+        <Text style={S.h2}>Profil</Text>
+        <Text style={S.p}>
+          Année de naissance : <Text style={{ color: colors.ink }}>{profile?.birthYear || "—"}</Text>{"\n"}
+          TMI par défaut : <Text style={{ color: colors.ink }}>{profile?.tmi || 0}%</Text>
+        </Text>
+      </View>
+
+      <View style={S.card}>
+        <Text style={S.h2}>Carrière</Text>
+        <Text style={S.p}>
+          Périodes : <Text style={{ color: colors.ink }}>{career.length}</Text>{"\n"}
+          Trimestres (estimation) : <Text style={{ color: colors.ink }}>{totalQuarters}</Text>{"\n"}
+          Somme salaires (brut estimé) :{" "}
+          <Text style={{ color: colors.ink }}>{new Intl.NumberFormat("fr-FR").format(Math.round(totalSalary))} €</Text>
+        </Text>
+      </View>
+
+      <View style={S.card}>
+        <Text style={S.h2}>PER — Projection rapide</Text>
+        <View style={{ gap: 6 }}>
+          {proj.map((p) => (
+            <View key={p.age} style={S.row}>
+              <Text style={S.p}>Âge {p.age}</Text>
+              <Text style={S.p}>
+                Capital ~{" "}
+                <Text style={{ color: colors.ink }}>
+                  {new Intl.NumberFormat("fr-FR").format(p.capital)} €
+                </Text>{" "}
+                | Rente ~{" "}
+                <Text style={{ color: colors.ink }}>
+                  {new Intl.NumberFormat("fr-FR").format(p.annuity)} €/an
+                </Text>
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+function CareerScreen({ career, setCareer }) {
+  const [startYear, setStartYear] = useState("");
+  const [endYear, setEndYear] = useState("");
+  const [avgSalary, setAvgSalary] = useState("");
+
+  async function addPeriod() {
+    const s = Number(startYear);
+    const e = Number(endYear);
+    const a = Number(avgSalary);
+    if (!s || !e || e < s) return Alert.alert("Carrière", "Vérifie tes années (début ≤ fin).");
+    const next = [...career, { id: Date.now().toString(), startYear: s, endYear: e, avgSalary: a || 0 }];
+    setCareer(next);
+    await save(KEYS.CAREER, next);
+    setStartYear("");
+    setEndYear("");
+    setAvgSalary("");
+  }
+
+  async function remove(id) {
+    const next = career.filter((p) => p.id !== id);
+    setCareer(next);
+    await save(KEYS.CAREER, next);
+  }
+
+  return (
+    <ScrollView style={{ paddingHorizontal: 16 }}>
+      <View style={S.header}>
+        <Text style={S.h1}>Carrière</Text>
+        <Text style={S.p}>Ajoute tes périodes d’activité (prototype).</Text>
+      </View>
+
+      <View style={[S.card, { gap: 8 }]}>
+        <Text style={S.h2}>Ajouter une période</Text>
+        <View>
+          <Text style={S.label}>Année début</Text>
+          <TextInput keyboardType="number-pad" value={startYear} onChangeText={setStartYear} style={S.input} placeholder="ex. 2019" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View>
+          <Text style={S.label}>Année fin</Text>
+          <TextInput keyboardType="number-pad" value={endYear} onChangeText={setEndYear} style={S.input} placeholder="ex. 2024" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View>
+          <Text style={S.label}>Salaire annuel moyen (brut)</Text>
+          <TextInput keyboardType="number-pad" value={avgSalary} onChangeText={setAvgSalary} style={S.input} placeholder="ex. 38000" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <Pressable onPress={addPeriod} style={S.btn}><Text style={S.btnText}>Ajouter</Text></Pressable>
+      </View>
+
+      <View style={S.card}>
+        <Text style={S.h2}>Mes périodes</Text>
+        {career.length === 0 ? (
+          <Text style={S.p}>Aucune période pour le moment.</Text>
+        ) : (
+          <FlatList
+            data={career}
+            keyExtractor={(item) => item.id}
+            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            renderItem={({ item }) => {
+              const q = estimateQuarters(item.startYear, item.endYear);
+              return (
+                <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: "#101318" }}>
+                  <View style={S.row}>
+                    <Text style={{ color: colors.ink, fontWeight: "700" }}>
+                      {item.startYear}–{item.endYear}
+                    </Text>
+                    <Pressable onPress={() => remove(item.id)} style={S.btnDanger}>
+                      <Text style={{ color: "#fff", fontWeight: "700" }}>Supprimer</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={S.p}>Salaire moyen : {new Intl.NumberFormat("fr-FR").format(item.avgSalary || 0)} €</Text>
+                  <Text style={S.p}>Trimestres estimés : {q}</Text>
+                </View>
+              );
+            }}
+          />
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+function PerScreen({ profile, per, setPer }) {
+  const [annualContribution, setAnnualContribution] = useState(String(per.annualContribution ?? ""));
+  const [expectedReturn, setExpectedReturn] = useState(String(per.expectedReturn ?? "5"));
+  const [tmi, setTmi] = useState(String(per.tmi ?? profile?.tmi ?? "30"));
+
+  const currentYear = new Date().getFullYear();
+  const birthYear = Number(profile?.birthYear || currentYear - 30);
+  const [retAge, setRetAge] = useState("64");
+
+  const months = Math.max(0, (Number(retAge) - (currentYear - birthYear)) * 12);
+  const monthly = (Number(annualContribution) || 0) / 12;
+  const capital = futureValueSeriesMonthly(monthly, (Number(expectedReturn) || 0) / 100, months);
+  const annuity = capitalToAnnuity(capital);
+  const taxSaved = (Number(annualContribution) || 0) * (Number(tmi) || 0) / 100;
+
+  async function persist() {
+    const next = {
+      annualContribution: Number(annualContribution) || 0,
+      expectedReturn: Number(expectedReturn) || 0,
+      tmi: Number(tmi) || 0,
+    };
+    setPer(next);
+    await save(KEYS.PER, next);
+    Alert.alert("PER", "Paramètres enregistrés.");
+  }
+
+  return (
+    <ScrollView style={{ paddingHorizontal: 16 }}>
+      <View style={S.header}>
+        <Text style={S.h1}>PER — Simulation</Text>
+        <Text style={S.p}>Calcul local : capital projeté, rente et avantage fiscal.</Text>
+      </View>
+
+      <View style={[S.card, { gap: 8 }]}>
+        <View>
+          <Text style={S.label}>Contribution annuelle (€)</Text>
+          <TextInput keyboardType="number-pad" value={annualContribution} onChangeText={setAnnualContribution} style={S.input} placeholder="ex. 3600" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View>
+          <Text style={S.label}>Rendement attendu (%/an)</Text>
+          <TextInput keyboardType="decimal-pad" value={expectedReturn} onChangeText={setExpectedReturn} style={S.input} placeholder="ex. 5" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View>
+          <Text style={S.label}>TMI (%)</Text>
+          <TextInput keyboardType="number-pad" value={tmi} onChangeText={setTmi} style={S.input} placeholder="ex. 30" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View>
+          <Text style={S.label}>Âge de départ envisagé</Text>
+          <TextInput keyboardType="number-pad" value={retAge} onChangeText={setRetAge} style={S.input} placeholder="64" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <Pressable onPress={persist} style={S.btn}><Text style={S.btnText}>Enregistrer ces paramètres</Text></Pressable>
+      </View>
+
+      <View style={S.card}>
+        <Text style={S.h2}>Résultats (à paramètres constants)</Text>
+        <Text style={S.p}>
+          Capital projeté :{" "}
+          <Text style={{ color: colors.ink }}>
+            {new Intl.NumberFormat("fr-FR").format(Math.round(capital))} €
+          </Text>{" "}
+          {"\n"}
+          Rente annuelle estimée :{" "}
+          <Text style={{ color: colors.ink }}>
+            {new Intl.NumberFormat("fr-FR").format(Math.round(annuity))} €
+          </Text>{" "}
+          (taux de conversion 3,5%)
+          {"\n"}
+          Avantage fiscal annuel (déduction) :{" "}
+          <Text style={{ color: colors.ink }}>
+            ~ {new Intl.NumberFormat("fr-FR").format(Math.round(taxSaved))} €
+          </Text>
+        </Text>
+      </View>
+    </ScrollView>
+  );
+}
+
+function ProfileScreen({ profile, setProfile }) {
+  const [birthYear, setBirthYear] = useState(String(profile?.birthYear ?? ""));
+  const [tmi, setTmi] = useState(String(profile?.tmi ?? "30"));
+
+  async function persist() {
+    const next = { birthYear: Number(birthYear) || null, tmi: Number(tmi) || 0 };
+    setProfile(next);
+    await save(KEYS.PROFILE, next);
+    Alert.alert("Profil", "Enregistré.");
+  }
+
+  async function resetAll() {
+    await AsyncStorage.multiRemove([KEYS.PROFILE, KEYS.CAREER, KEYS.PER]);
+    setProfile({ birthYear: null, tmi: 30 });
+    Alert.alert("Données", "Toutes les données locales ont été effacées.");
+  }
+
+  return (
+    <ScrollView style={{ paddingHorizontal: 16 }}>
+      <View style={S.header}>
+        <Text style={S.h1}>Profil</Text>
+        <Text style={S.p}>Ces infos servent de base aux simulations.</Text>
+      </View>
+
+      <View style={[S.card, { gap: 8 }]}>
+        <View>
+          <Text style={S.label}>Année de naissance</Text>
+          <TextInput keyboardType="number-pad" value={birthYear} onChangeText={setBirthYear} style={S.input} placeholder="ex. 1996" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View>
+          <Text style={S.label}>TMI (%) par défaut</Text>
+          <TextInput keyboardType="number-pad" value={tmi} onChangeText={setTmi} style={S.input} placeholder="ex. 30" placeholderTextColor={colors.inkMuted} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Pressable onPress={persist} style={S.btn}><Text style={S.btnText}>Enregistrer</Text></Pressable>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Pressable onPress={resetAll} style={S.btnGhost}><Text style={{ color: colors.ink, fontWeight: "700" }}>Effacer tout</Text></Pressable>
+          </View>
+        </View>
+      </View>
+
+      <View style={S.card}>
+        <Text style={S.h2}>À venir</Text>
+        <Text style={S.p}>Import du relevé de carrière (PDF), lecture automatique, et simulations multi-régimes.</Text>
+      </View>
+    </ScrollView>
+  );
+}
+
+// ---------- App (tabs maison sans dépendances de navigation) ----------
+const TABS = [
+  { key: "dashboard", label: "Tableau de bord" },
+  { key: "career", label: "Carrière" },
+  { key: "per", label: "PER" },
+  { key: "profile", label: "Profil" },
+];
+
+export default function App() {
+  const [tab, setTab] = useState("dashboard");
+  const [profile, setProfile] = useState({ birthYear: null, tmi: 30 });
+  const [career, setCareer] = useState([]);
+  const [per, setPer] = useState({ annualContribution: 3600, expectedReturn: 5, tmi: 30 });
+
+  useEffect(() => {
+    (async () => {
+      const p = await load(KEYS.PROFILE, { birthYear: null, tmi: 30 });
+      const c = await load(KEYS.CAREER, []);
+      const pe = await load(KEYS.PER, { annualContribution: 3600, expectedReturn: 5, tmi: p.tmi || 30 });
+      setProfile(p);
+      setCareer(c);
+      setPer(pe);
+    })();
+  }, []);
+
+  return (
+    <View style={S.app}>
+      {tab === "dashboard" && <Dashboard profile={profile} career={career} per={per} />}
+      {tab === "career" && <CareerScreen career={career} setCareer={setCareer} />}
+      {tab === "per" && <PerScreen profile={profile} per={per} setPer={setPer} />}
+      {tab === "profile" && <ProfileScreen profile={profile} setProfile={setProfile} />}
+
+      <View style={S.tabBar}>
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <Pressable key={t.key} style={S.tabBtn} onPress={() => setTab(t.key)}>
+              <Text style={[S.tabText, active && S.tabActive]}>{t.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
